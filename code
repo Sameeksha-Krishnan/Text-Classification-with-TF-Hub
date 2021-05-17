@@ -1,0 +1,46 @@
+import os
+import numpy as np
+
+import tensorflow as tf
+import tensorflow_hub as hub
+import tensorflow_datasets as tfds
+
+print('Eager: ', tf.executing_eagerly())
+print('GPU is ', 'available' if tf.config.list_physical_devices('GPU') else 'not available')
+
+train_data, validation_data, test_data = tfds.load(name = 'imdb_reviews', split = ('train[:60%]', 'train[60%:]', 'test'), as_supervised = True)
+
+train_examples_batch, train_label_batch  = next(iter(train_data.batch(10)))
+train_examples_batch
+train_label_batch
+
+# Build the model
+'''The neural network is created by stacking layers—this requires three main architectural decisions:
+1) How to represent the text?
+2) How many layers to use in the model?
+3) How many hidden units to use for each layer?
+In this example, the input data consists of sentences. The labels to predict are either 0 or 1.
+One way to represent the text is to convert sentences into embeddings vectors. Use a pre-trained text embedding as the first layer, which will have three advantages:
+1) You don't have to worry about text preprocessing,
+2) Benefit from transfer learning,
+3) the embedding has a fixed size, so it's simpler to process.
+ Note that no matter the length of the input text, the output shape of the embeddings is: (num_examples, embedding_dimension).'''
+embedding = "https://tfhub.dev/google/nnlm-en-dim50/2"
+hub_layer = hub.KerasLayer(embedding, input_shape = [], dtype = tf.string, trainable = True) # input_shape=[] - Expects a tensor of shape [batch_size] as input. # dtype - The dtype of the layer weights.
+hub_layer(train_examples_batch[:3])
+
+model = tf.keras.Sequential()
+model.add(hub_layer)
+model.add(tf.keras.layers.Dense(16, activation = 'relu'))
+model.add(tf.keras.layers.Dense(1))
+
+model.summary()
+
+model.compile(loss = tf.keras.losses.BinaryCrossentropy(from_logits = True), optimizer = 'adam', metrics = ['accuracy'])
+
+history = model.fit(train_data.shuffle(10000).batch(512), validation_data = validation_data.batch(512), epochs = 10, verbose = 1)
+
+results = model.evaluate(test_data.batch(512), verbose = 2)
+
+for name, value in zip(model.metrics_names, results):
+    print('%s: %.3f' % (name, value))
